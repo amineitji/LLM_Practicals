@@ -1,82 +1,49 @@
-.PHONY: help setup tp0 tp1 all clean interactive
+.PHONY: help setup tp0 tp1 tp2 tp2-train tp2-openai all clean interactive
 
 PYTHON := python
 SRC_TP0 := src/tp0
 SRC_TP1 := src/tp1
-OUTPUTS := outputs
-MODELS := models
-DATA := data
+SRC_TP2 := src/tp2
 
 help:
+	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  DEEP LEARNING TPS - MAKEFILE"
+	@echo "  Deep Learning TPs - Makefile"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
 	@echo "Commandes disponibles:"
+	@echo "  make setup       - Créer l'environnement et installer dépendances"
+	@echo "  make tp0         - Lancer TP0 (PyTorch Basics)"
+	@echo "  make tp1         - Lancer TP1 (Tokenizers & Attention)"
+	@echo "  make tp2         - Lancer TP2 parties 1-8 (GPT-2 base)"
+	@echo "  make tp2-train   - Lancer TP2 parties 9-13 (Entraînement)"
+	@echo "  make tp2-openai  - Lancer TP2 partie 14 (Poids OpenAI)"
+	@echo "  make all         - Lancer tous les TPs"
+	@echo "  make clean       - Nettoyer outputs et models"
+	@echo "  make interactive - Menu interactif"
 	@echo ""
-	@echo "  make interactive    - Menu interactif pour choisir quoi lancer"
-	@echo "  make setup          - Créer l'environnement conda et installer dépendances"
-	@echo "  make tp0            - Lancer TP0 (PyTorch Basics)"
-	@echo "  make tp1            - Lancer TP1 (Tokenizers & Attention)"
-	@echo "  make all            - Lancer TP0 puis TP1"
-	@echo "  make clean          - Nettoyer outputs et models"
-	@echo "  make help           - Afficher cette aide"
-	@echo ""
-	@echo "════════════════════════════════════════════════════════════════"
 
 setup:
-	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  SETUP ENVIRONNEMENT"
-	@echo "════════════════════════════════════════════════════════════════"
-	@echo ""
-	@echo "[1/6] Création de la structure de dossiers..."
-	@mkdir -p $(SRC_TP0) $(SRC_TP1) $(DATA) $(MODELS) $(OUTPUTS)
-	@echo "✓ Dossiers créés: src/tp0, src/tp1, data, models, outputs"
-	@echo ""
-	@echo "[2/6] Vérification environnement conda..."
-	@if conda env list | grep -q "dl_tps"; then \
-		echo "✓ Environnement 'dl_tps' existe déjà"; \
-	else \
-		echo "Création environnement conda 'dl_tps'..."; \
-		conda create -n dl_tps python=3.10 -y; \
-		echo "✓ Environnement créé"; \
-	fi
-	@echo ""
-	@echo "[3/6] Installation PyTorch..."
-	@bash -c "source $$(conda info --base)/etc/profile.d/conda.sh && conda activate dl_tps && pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
-	@echo "✓ PyTorch installé"
-	@echo ""
-	@echo "[4/6] Installation autres packages..."
-	@bash -c "source $$(conda info --base)/etc/profile.d/conda.sh && conda activate dl_tps && pip install tiktoken matplotlib numpy pandas seaborn"
-	@echo "✓ Packages installés"
-	@echo ""
-	@echo "[5/6] Génération requirements.txt..."
-	@bash -c "source $$(conda info --base)/etc/profile.d/conda.sh && conda activate dl_tps && pip freeze > requirements.txt"
-	@echo "✓ requirements.txt créé"
-	@echo ""
-	@echo "[6/6] Téléchargement des données..."
-	@if [ ! -f $(DATA)/the-verdict.txt ]; then \
-		wget -q -O $(DATA)/the-verdict.txt https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch02/01_main-chapter-code/the-verdict.txt; \
-		echo "✓ the-verdict.txt téléchargé"; \
-	else \
-		echo "✓ the-verdict.txt déjà présent"; \
-	fi
 	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  SETUP TERMINÉ"
+	@echo "  SETUP - Création environnement"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
-	@echo "Pour activer l'environnement:"
-	@echo "  conda activate dl_tps"
+	@conda create -n dl_tps python=3.10 -y
+	@echo ""
+	@echo "✓ Environnement créé: dl_tps"
+	@echo ""
+	@echo "Pour activer: conda activate dl_tps"
+	@echo "Puis installer: pip install torch tiktoken matplotlib numpy pandas seaborn"
 	@echo ""
 
 tp0:
 	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  LANCEMENT TP0 - PYTORCH BASICS"
+	@echo "  LANCEMENT TP0 - PyTorch Basics"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
-	@echo "▸ Partie 1: Matrices et Tensors"
+	@echo "▸ Partie 1: Matrices et Tenseurs"
 	@echo "────────────────────────────────────────────────────────────────"
 	@$(PYTHON) $(SRC_TP0)/matrices_tensors.py
 	@echo ""
@@ -84,7 +51,7 @@ tp0:
 	@echo "────────────────────────────────────────────────────────────────"
 	@$(PYTHON) $(SRC_TP0)/gradients.py
 	@echo ""
-	@echo "▸ Partie 3: Neural Networks"
+	@echo "▸ Partie 3: Réseaux de Neurones"
 	@echo "────────────────────────────────────────────────────────────────"
 	@$(PYTHON) $(SRC_TP0)/neural_network.py
 	@echo ""
@@ -96,17 +63,11 @@ tp0:
 	@echo "  TP0 TERMINÉ"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
-	@echo "Fichiers générés:"
-	@echo "  - outputs/tp0_matrices.png"
-	@echo "  - outputs/tp0_gradients.png"
-	@echo "  - outputs/tp0_training.png"
-	@echo "  - models/model.pth"
-	@echo ""
 
 tp1:
 	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  LANCEMENT TP1 - TOKENIZERS & ATTENTION"
+	@echo "  LANCEMENT TP1 - Tokenizers & Attention"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
 	@echo "▸ Partie 1: Tokenizers"
@@ -137,27 +98,109 @@ tp1:
 	@echo "  TP1 TERMINÉ"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
+
+tp2:
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  LANCEMENT TP2 - GPT-2 Implementation"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "▸ Partie 1: Layer Normalization"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/layer_norm.py
+	@echo ""
+	@echo "▸ Partie 2: GELU Activation"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/gelu.py
+	@echo ""
+	@echo "▸ Partie 3: Residual Connections"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/residual_connections.py
+	@echo ""
+	@echo "▸ Partie 4: Transformer Block"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/transformer_block.py
+	@echo ""
+	@echo "▸ Partie 5: GPT Model Complet"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/gpt_model.py
+	@echo ""
+	@echo "▸ Partie 6: Génération de texte (Step 1)"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/text_generation.py
+	@echo ""
+	@echo "▸ Partie 7: Génération de texte (Step 2)"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/text_generation_v2.py
+	@echo ""
+	@echo "▸ Partie 8: Loss et Perplexity"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/loss_perplexity.py
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  TP2 TERMINÉ (Parties 1-8)"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
 	@echo "Fichiers générés:"
-	@echo "  - outputs/tp1_tokenizer_stats.png"
-	@echo "  - outputs/tp1_stride_overlap.png"
-	@echo "  - outputs/tp1_embeddings.png"
-	@echo "  - outputs/tp1_attention_mechanism.png"
-	@echo "  - outputs/tp1_self_attention.png"
-	@echo "  - outputs/tp1_multihead_attention.png"
+	@echo "  - outputs/tp2_layernorm.png"
+	@echo "  - outputs/tp2_gelu.png"
+	@echo "  - outputs/tp2_residual.png"
+	@echo ""
+	@echo "⚠ NOTE: L'entraînement (Partie 9) peut être long!"
+	@echo "Pour lancer l'entraînement: make tp2-train"
 	@echo ""
 
-all:
+tp2-train:
 	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  LANCEMENT COMPLET - TP0 + TP1"
-	@echo "════════════════════════════════════════════════════════════════"
-	@$(MAKE) tp0
-	@$(MAKE) tp1
-	@echo ""
-	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  TOUS LES TPS TERMINÉS"
+	@echo "  TP2 - ENTRAÎNEMENT (PEUT PRENDRE DU TEMPS)"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
+	@echo "▸ Partie 9: Pré-entraînement"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/training.py
+	@echo ""
+	@echo "▸ Partie 10-11: Temperature & Top-K Sampling"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/sampling.py
+	@echo ""
+	@echo "▸ Partie 12: Génération avancée"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/generate_advanced.py
+	@echo ""
+	@echo "▸ Partie 13: Sauvegarder/Charger"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/save_load.py
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  TP2 ENTRAÎNEMENT TERMINÉ"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "Fichiers générés:"
+	@echo "  - outputs/tp2_training.png"
+	@echo "  - outputs/tp2_temperature.png"
+	@echo "  - outputs/tp2_topk.png"
+	@echo "  - models/gpt2_trained.pth"
+	@echo "  - models/gpt2_model_only.pth"
+	@echo "  - models/gpt2_checkpoint.pth"
+	@echo ""
+
+tp2-openai:
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  TP2 - CHARGER POIDS OPENAI"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "▸ Partie 14: Charger GPT-2 officiel"
+	@echo "────────────────────────────────────────────────────────────────"
+	@$(PYTHON) $(SRC_TP2)/load_openai.py
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  TP2 COMPLET TERMINÉ!"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
+
+all: tp0 tp1 tp2 tp2-train
 
 clean:
 	@echo ""
@@ -165,46 +208,40 @@ clean:
 	@echo "  NETTOYAGE"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
-	@echo "Suppression des fichiers générés..."
-	@rm -rf $(OUTPUTS)/*.png
-	@rm -rf $(MODELS)/*.pth
-	@rm -rf __pycache__ src/__pycache__ $(SRC_TP0)/__pycache__ $(SRC_TP1)/__pycache__
-	@echo "✓ Outputs nettoyés"
-	@echo "✓ Models supprimés"
-	@echo "✓ Cache Python supprimé"
-	@echo ""
-	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  NETTOYAGE TERMINÉ"
-	@echo "════════════════════════════════════════════════════════════════"
+	@rm -rf outputs/*.png
+	@rm -rf models/*.pth
+	@rm -rf __pycache__ src/__pycache__ src/tp0/__pycache__ src/tp1/__pycache__ src/tp2/__pycache__
+	@echo "✓ Fichiers nettoyés"
 	@echo ""
 
 interactive:
 	@echo ""
 	@echo "════════════════════════════════════════════════════════════════"
-	@echo "  MENU INTERACTIF - DEEP LEARNING TPS"
+	@echo "  MENU INTERACTIF - Deep Learning TPs"
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
-	@echo "Que voulez-vous faire?"
+	@echo "Choisissez une option:"
 	@echo ""
-	@echo "  [0] Setup - Créer environnement et installer dépendances"
-	@echo "  [1] TP0 - PyTorch Basics (matrices, gradients, NN, devices)"
-	@echo "  [2] TP1 - Tokenizers & Attention (embeddings, self-attention, MHA)"
-	@echo "  [3] Tout lancer (TP0 + TP1)"
-	@echo "  [4] Nettoyer les outputs"
-	@echo "  [5] Afficher l'aide"
+	@echo "  [1] TP0 - PyTorch Basics"
+	@echo "  [2] TP1 - Tokenizers & Attention"
+	@echo "  [3] TP2 - GPT-2 Implementation (parties 1-8)"
+	@echo "  [4] TP2 - Entraînement (parties 9-13)"
+	@echo "  [5] TP2 - Charger poids OpenAI (partie 14)"
+	@echo "  [6] Tous les TPs"
+	@echo "  [7] Nettoyer outputs"
 	@echo "  [q] Quitter"
 	@echo ""
-	@echo "════════════════════════════════════════════════════════════════"
 	@read -p "Votre choix: " choice; \
 	case $$choice in \
-		0) $(MAKE) setup ;; \
 		1) $(MAKE) tp0 ;; \
 		2) $(MAKE) tp1 ;; \
-		3) $(MAKE) all ;; \
-		4) $(MAKE) clean ;; \
-		5) $(MAKE) help ;; \
+		3) $(MAKE) tp2 ;; \
+		4) $(MAKE) tp2-train ;; \
+		5) $(MAKE) tp2-openai ;; \
+		6) $(MAKE) all ;; \
+		7) $(MAKE) clean ;; \
 		q|Q) echo ""; echo "Au revoir!"; echo ""; exit 0 ;; \
-		*) echo ""; echo "❌ Choix invalide"; echo ""; $(MAKE) interactive ;; \
+		*) echo ""; echo "Option invalide"; echo ""; $(MAKE) interactive ;; \
 	esac; \
 	echo ""; \
 	read -p "Appuyez sur Entrée pour revenir au menu..." dummy; \
