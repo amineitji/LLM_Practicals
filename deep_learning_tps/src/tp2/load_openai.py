@@ -1,272 +1,179 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import tiktoken
-from gpt_model import GPTModel, LayerNorm, GELU, FeedForward, MultiHeadAttention, TransformerBlock
-from generate_advanced import generate
+import os
+import sys
+
+# --- GESTION DES IMPORTS ROBUSTE ---
+# On ajoute le dossier courant (src/tp2) au sys.path pour trouver gpt_download.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
 
 print("="*60)
 print("TP2 - PARTIE 14: CHARGER POIDS OPENAI GPT-2")
 print("="*60)
 
-# 1. Download et load
-print("\n1. Téléchargement des poids OpenAI...")
-print("\n⚠ NOTE IMPORTANTE:")
-print("  Le chargement complet des poids OpenAI nécessite:")
-print("  - Le fichier gpt_download.py dans le dossier racine")
-print("  - Une adaptation de MultiHeadAttention pour qkv_bias=True")
-print("  - Connexion internet pour télécharger les poids (~500MB)")
-print("\n  Pour une implémentation complète, voir:")
-print("  https://github.com/rasbt/LLMs-from-scratch")
+try:
+    # On importe tensorflow ici juste pour vérifier qu'il est installé
+    import tensorflow as tf
+    # On importe le script de téléchargement
+    import gpt_download
+except ImportError as e:
+    print("\n❌ ERREUR CRITIQUE : Manque de dépendances")
+    print(f"Détail : {e}")
+    print("👉 Vous devez installer tensorflow pour lire les poids d'OpenAI.")
+    print("👉 Commande : pip install tensorflow")
+    sys.exit(1)
+
+from gpt_model import GPTModel
+from generate_advanced import generate
+
+# 1. Téléchargement et chargement des poids bruts
+print("\n1. Téléchargement des poids OpenAI (124M)...")
+model_size = "124M"
+# On télécharge dans un dossier 'gpt2_openai' à la racine du projet
+# On remonte de deux niveaux depuis src/tp2 pour arriver à la racine
+root_dir = os.path.dirname(os.path.dirname(current_dir))
+models_dir = os.path.join(root_dir, "gpt2_openai")
 
 try:
-    import sys
-    sys.path.append('.')
-    from gpt_download import download_and_load_gpt2
-    
-    print("\n  Téléchargement en cours...")
-    settings, params = download_and_load_gpt2(model_size="124M", models_dir="gpt2")
-    print("✓ Poids téléchargés et chargés")
-    
-    # 2. Settings et params
-    print("\n2. Settings dictionary:")
-    print(settings)
-    
-    print("\n3. Clés du params dictionary:")
-    print(f"Nombre de clés: {len(params)}")
-    print("\nPremières 10 clés:")
-    for i, key in enumerate(list(params.keys())[:10]):
-        shape = params[key].shape if hasattr(params[key], 'shape') else 'N/A'
-        print(f"  {key}: {shape}")
-    
-    print("\n✓ Structure des paramètres:")
-    print("  - wte: word token embeddings")
-    print("  - wpe: word position embeddings")
-    print("  - h.X.ln_1/ln_2: layer norms")
-    print("  - h.X.attn: attention layers (c_attn, c_proj)")
-    print("  - h.X.mlp: feed forward (c_fc, c_proj)")
-    print("  - ln_f: final layer norm")
-    
-    # 3. Créer architecture
-    print("\n3. Création de l'architecture GPT-2:")
-    GPT_CONFIG_124M = {
-        "vocab_size": 50257,
-        "context_length": 1024,
-        "emb_dim": 768,
-        "n_heads": 12,
-        "n_layers": 12,
-        "drop_rate": 0.0,
-        "qkv_bias": True
-    }
-    
-    model = GPTModel(GPT_CONFIG_124M)
-    print("✓ Architecture créée")
-    
-    # 4. Fonction assign
-    def assign(left, right):
-        """Vérifie compatibilité et assigne les poids"""
-        if left.shape != right.shape:
-            raise ValueError(f"Shape mismatch: {left.shape} vs {right.shape}")
-        return nn.Parameter(torch.tensor(right))
-    
-    print("\n4. Fonction assign créée")
-    
-    # 5. Load weights
-    print("\n5. Chargement des poids OpenAI dans le modèle...")
-    
-    def load_weights_into_gpt(gpt, params):
-        """Charge les poids OpenAI dans notre modèle GPT"""
-        
-        # Token et position embeddings
-        gpt.tok_emb.weight = assign(gpt.tok_emb.weight, params['wte'])
-        gpt.pos_emb.weight = assign(gpt.pos_emb.weight, params['wpe'])
-        
-        # Transformer blocks
-        for b in range(len(gpt.trf_blocks)):
-            # Attention weights (concaténés dans OpenAI)
-            q_w, k_w, v_w = torch.split(
-                params[f'h.{b}.attn.c_attn.weight'], 
-                GPT_CONFIG_124M["emb_dim"], 
-                dim=-1
-            )
-            gpt.trf_blocks[b].att.W_query.weight = assign(
-                gpt.trf_blocks[b].att.W_query.weight, q_w.T
-            )
-            gpt.trf_blocks[b].att.W_key.weight = assign(
-                gpt.trf_blocks[b].att.W_key.weight, k_w.T
-            )
-            gpt.trf_blocks[b].att.W_value.weight = assign(
-                gpt.trf_blocks[b].att.W_value.weight, v_w.T
-            )
-            
-            # Attention projection
-            gpt.trf_blocks[b].att.out_proj.weight = assign(
-                gpt.trf_blocks[b].att.out_proj.weight, 
-                params[f'h.{b}.attn.c_proj.weight'].T
-            )
-            gpt.trf_blocks[b].att.out_proj.bias = assign(
-                gpt.trf_blocks[b].att.out_proj.bias,
-                params[f'h.{b}.attn.c_proj.bias']
-            )
-            
-            # Feed forward
-            gpt.trf_blocks[b].ff.layers[0].weight = assign(
-                gpt.trf_blocks[b].ff.layers[0].weight,
-                params[f'h.{b}.mlp.c_fc.weight'].T
-            )
-            gpt.trf_blocks[b].ff.layers[0].bias = assign(
-                gpt.trf_blocks[b].ff.layers[0].bias,
-                params[f'h.{b}.mlp.c_fc.bias']
-            )
-            gpt.trf_blocks[b].ff.layers[2].weight = assign(
-                gpt.trf_blocks[b].ff.layers[2].weight,
-                params[f'h.{b}.mlp.c_proj.weight'].T
-            )
-            gpt.trf_blocks[b].ff.layers[2].bias = assign(
-                gpt.trf_blocks[b].ff.layers[2].bias,
-                params[f'h.{b}.mlp.c_proj.bias']
-            )
-            
-            # Layer norms
-            gpt.trf_blocks[b].norm1.scale = assign(
-                gpt.trf_blocks[b].norm1.scale,
-                params[f'h.{b}.ln_1.weight']
-            )
-            gpt.trf_blocks[b].norm1.shift = assign(
-                gpt.trf_blocks[b].norm1.shift,
-                params[f'h.{b}.ln_1.bias']
-            )
-            gpt.trf_blocks[b].norm2.scale = assign(
-                gpt.trf_blocks[b].norm2.scale,
-                params[f'h.{b}.ln_2.weight']
-            )
-            gpt.trf_blocks[b].norm2.shift = assign(
-                gpt.trf_blocks[b].norm2.shift,
-                params[f'h.{b}.ln_2.bias']
-            )
-        
-        # Final layer norm
-        gpt.final_norm.scale = assign(gpt.final_norm.scale, params['ln_f.weight'])
-        gpt.final_norm.shift = assign(gpt.final_norm.shift, params['ln_f.bias'])
-        
-        # Output head (partage avec token embedding)
-        gpt.out_head.weight = assign(gpt.out_head.weight, params['wte'])
-    
-    load_weights_into_gpt(model, params)
-    print("✓ Poids chargés avec succès!")
-    
-    # 6. Test de génération
-    print("\n6. Test de génération avec GPT-2 officiel:")
-    model.eval()
-    
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
+    # Appel de la fonction du fichier gpt_download.py
+    hparams, params = gpt_download.download_and_load_gpt2(model_size=model_size, models_dir=models_dir)
+    print("✓ Poids téléchargés et chargés en mémoire")
+except Exception as e:
+    print(f"❌ Erreur lors du téléchargement/chargement : {e}")
+    sys.exit(1)
+
+# 2. Configuration du modèle
+print("\n2. Création de l'architecture GPT-2:")
+# NOTE: OpenAI utilise qkv_bias=True, contrairement à notre config par défaut
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 1024, # OpenAI utilise 1024
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": True  # IMPORTANT !
+}
+
+model = GPTModel(GPT_CONFIG_124M)
+model.eval()
+print("✓ Architecture créée (avec qkv_bias=True)")
+
+# 3. Fonction de transfert des poids
+def assign(left_param, right_numpy_array, name="param"):
+    """Convertit numpy -> torch et vérifie les dimensions"""
+    if right_numpy_array.ndim == 1:
+        # Cas des vecteurs (bias, layer norm)
+        right_tensor = torch.tensor(right_numpy_array)
     else:
-        device = torch.device("cpu")
-    
-    model.to(device)
-    
-    tokenizer = tiktoken.get_encoding("gpt2")
-    
-    prompts = [
-        "Hello, I am",
-        "The future of AI is",
-        "In a galaxy far, far away"
-    ]
-    
-    print("\n" + "="*60)
-    print("GÉNÉRATIONS AVEC GPT-2 OFFICIEL")
-    print("="*60)
-    
-    for prompt in prompts:
-        print(f"\n→ Prompt: '{prompt}'")
-        token_ids = torch.tensor(
-            tokenizer.encode(prompt)
-        ).unsqueeze(0).to(device)
+        # Cas des matrices (weights)
+        right_tensor = torch.tensor(right_numpy_array)
         
-        torch.manual_seed(123)
+    if left_param.shape != right_tensor.shape:
+        raise ValueError(f"Shape mismatch for {name}: {left_param.shape} vs {right_tensor.shape}")
+        
+    return nn.Parameter(right_tensor)
+
+# 4. Chargement des poids dans le modèle PyTorch
+print("\n3. Transfert des poids OpenAI -> PyTorch Model...")
+
+try:
+    # a. Embeddings
+    model.tok_emb.weight = assign(model.tok_emb.weight, params["wte"], "wte")
+    model.pos_emb.weight = assign(model.pos_emb.weight, params["wpe"], "wpe")
+
+    # b. Transformer Blocks
+    for b in range(len(model.trf_blocks)):
+        block_params = params["blocks"][b]
+        pt_block = model.trf_blocks[b]
+        
+        # 1. Attention - OpenAI stocke q,k,v concaténés dans c_attn
+        qkv_w = block_params['attn']['c_attn']['w']
+        qkv_b = block_params['attn']['c_attn']['b']
+        
+        # On doit splitter en 3 parties égales
+        q_w, k_w, v_w = np.split(qkv_w, 3, axis=-1)
+        q_b, k_b, v_b = np.split(qkv_b, 3, axis=-1)
+        
+        # Note: Dans PyTorch Linear, les poids sont [out_features, in_features] (transposés)
+        pt_block.att.W_query.weight = assign(pt_block.att.W_query.weight, q_w.T, f"h{b}.attn.q_w")
+        pt_block.att.W_query.bias   = assign(pt_block.att.W_query.bias,   q_b,   f"h{b}.attn.q_b")
+        
+        pt_block.att.W_key.weight   = assign(pt_block.att.W_key.weight,   k_w.T, f"h{b}.attn.k_w")
+        pt_block.att.W_key.bias     = assign(pt_block.att.W_key.bias,     k_b,   f"h{b}.attn.k_b")
+        
+        pt_block.att.W_value.weight = assign(pt_block.att.W_value.weight, v_w.T, f"h{b}.attn.v_w")
+        pt_block.att.W_value.bias   = assign(pt_block.att.W_value.bias,   v_b,   f"h{b}.attn.v_b")
+        
+        # 2. Attention Projection (c_proj)
+        pt_block.att.out_proj.weight = assign(pt_block.att.out_proj.weight, block_params['attn']['c_proj']['w'].T, f"h{b}.attn.c_proj.w")
+        pt_block.att.out_proj.bias   = assign(pt_block.att.out_proj.bias,   block_params['attn']['c_proj']['b'],   f"h{b}.attn.c_proj.b")
+        
+        # 3. Feed Forward (c_fc -> GELU -> c_proj)
+        # Layer 1 (c_fc)
+        pt_block.ff.layers[0].weight = assign(pt_block.ff.layers[0].weight, block_params['mlp']['c_fc']['w'].T, f"h{b}.mlp.c_fc.w")
+        pt_block.ff.layers[0].bias   = assign(pt_block.ff.layers[0].bias,   block_params['mlp']['c_fc']['b'],   f"h{b}.mlp.c_fc.b")
+        
+        # Layer 2 (c_proj) - index 2 car index 1 est GELU
+        pt_block.ff.layers[2].weight = assign(pt_block.ff.layers[2].weight, block_params['mlp']['c_proj']['w'].T, f"h{b}.mlp.c_proj.w")
+        pt_block.ff.layers[2].bias   = assign(pt_block.ff.layers[2].bias,   block_params['mlp']['c_proj']['b'],   f"h{b}.mlp.c_proj.b")
+        
+        # 4. Layer Norms
+        pt_block.norm1.scale = assign(pt_block.norm1.scale, block_params['ln_1']['g'], f"h{b}.ln_1.g")
+        pt_block.norm1.shift = assign(pt_block.norm1.shift, block_params['ln_1']['b'], f"h{b}.ln_1.b")
+        pt_block.norm2.scale = assign(pt_block.norm2.scale, block_params['ln_2']['g'], f"h{b}.ln_2.g")
+        pt_block.norm2.shift = assign(pt_block.norm2.shift, block_params['ln_2']['b'], f"h{b}.ln_2.b")
+
+    # c. Final Layer Norm
+    model.final_norm.scale = assign(model.final_norm.scale, params["ln_f_g"], "ln_f.g")
+    model.final_norm.shift = assign(model.final_norm.shift, params["ln_f_b"], "ln_f.b")
+
+    # d. Output Head (Weight Tying)
+    model.out_head.weight = assign(model.out_head.weight, params["wte"], "wte (head)")
+
+    print("✓ Tous les poids ont été chargés avec succès!")
+
+except KeyError as e:
+    print(f"❌ Erreur de structure des poids (clé manquante) : {e}")
+    sys.exit(1)
+except ValueError as e:
+    print(f"❌ Erreur de dimension des poids : {e}")
+    sys.exit(1)
+
+# 5. Test de génération
+print("\n4. Test de génération (GPT-2 Officiel):")
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+print(f"Device: {device}")
+model.to(device)
+
+tokenizer = tiktoken.get_encoding("gpt2")
+prompts = ["The future of Artificial Intelligence is", "Once upon a time in a"]
+
+for prompt in prompts:
+    print(f"\nPrompt: '{prompt}'")
+    token_ids = torch.tensor(tokenizer.encode(prompt)).unsqueeze(0).to(device)
+    
+    with torch.no_grad():
         output_ids = generate(
             model=model,
             idx=token_ids,
             max_new_tokens=30,
-            context_size=GPT_CONFIG_124M["context_length"],
-            temperature=1.0,
+            context_size=1024,
+            temperature=0.8,
             top_k=50
         )
-        
-        output_text = tokenizer.decode(output_ids.squeeze(0).tolist())
-        print(f"   {output_text}")
-    
-    print("\n" + "="*60)
-    print("✓ FÉLICITATIONS!")
-    print("="*60)
-    print("\nVous avez:")
-    print("  ✓ Implémenté GPT-2 (124M) from scratch")
-    print("  ✓ Entraîné le modèle sur vos données")
-    print("  ✓ Chargé les poids officiels OpenAI")
-    print("  ✓ Généré du texte avec différentes stratégies de sampling")
-    print("\nVous comprenez maintenant comment fonctionnent les LLMs! 🎉")
-    
-except ImportError:
-    print("❌ Erreur: gpt_download.py non trouvé")
-    print("\n  Pour utiliser cette fonctionnalité:")
-    print("  1. Téléchargez gpt_download.py depuis le TP")
-    print("  2. Placez-le dans le dossier racine du projet")
-    print("  3. Relancez ce script")
-    print("\n  Alternatif: Continuez avec votre modèle entraîné")
-    
-    # Générer avec modèle entraîné à la place
-    print("\n  Génération avec modèle entraîné à la place:")
-    
-    GPT_CONFIG_124M = {
-        "vocab_size": 50257,
-        "context_length": 256,
-        "emb_dim": 768,
-        "n_heads": 12,
-        "n_layers": 12,
-        "drop_rate": 0.1,
-        "qkv_bias": False
-    }
-    
-    model = GPTModel(GPT_CONFIG_124M)
-    try:
-        model.load_state_dict(torch.load('models/gpt2_trained.pth'))
-        print("  ✓ Modèle entraîné chargé")
-    except:
-        print("  ⚠ Aucun modèle entraîné trouvé")
-    
-    model.eval()
-    
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    
-    model.to(device)
-    
-    tokenizer = tiktoken.get_encoding("gpt2")
-    prompt = "Every effort moves you"
-    
-    print(f"\n  → Prompt: '{prompt}'")
-    token_ids = torch.tensor(tokenizer.encode(prompt)).unsqueeze(0).to(device)
-    
-    torch.manual_seed(123)
-    output_ids = generate(
-        model=model,
-        idx=token_ids,
-        max_new_tokens=30,
-        context_size=GPT_CONFIG_124M["context_length"],
-        temperature=1.0,
-        top_k=25
-    )
     
     output_text = tokenizer.decode(output_ids.squeeze(0).tolist())
-    print(f"     {output_text}")
-
-except Exception as e:
-    print(f"❌ Erreur inattendue: {e}")
-    print("\n  Le chargement des poids OpenAI est optionnel.")
-    print("  Votre modèle entraîné fonctionne parfaitement!")
+    # Affichage en couleur pour distinguer
+    print(f"GPT-2:  \033[92m{output_text}\033[0m") 
+    print("-" * 50)

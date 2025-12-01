@@ -1,4 +1,4 @@
-.PHONY: help setup tp0 tp1 tp2 tp2-train tp2-openai all clean interactive
+.PHONY: help setup tp0 tp1 tp2 tp2-train tp2-test tp2-openai all clean interactive
 
 PYTHON := python
 SRC_TP0 := src/tp0
@@ -17,6 +17,7 @@ help:
 	@echo "  make tp1         - Lancer TP1 (Tokenizers & Attention)"
 	@echo "  make tp2         - Lancer TP2 parties 1-8 (GPT-2 base)"
 	@echo "  make tp2-train   - Lancer TP2 parties 9-13 (Entraînement)"
+	@echo "  make tp2-test    - Lancer le TEST MANUEL (après entraînement)"
 	@echo "  make tp2-openai  - Lancer TP2 partie 14 (Poids OpenAI)"
 	@echo "  make all         - Lancer tous les TPs"
 	@echo "  make clean       - Nettoyer outputs et models"
@@ -127,11 +128,13 @@ tp2:
 	@echo ""
 	@echo "▸ Partie 6: Génération de texte (Step 1)"
 	@echo "────────────────────────────────────────────────────────────────"
-	@$(PYTHON) $(SRC_TP2)/text_generation.py
+	@# Note: Si le fichier n'existe pas, commentez la ligne ci-dessous
+	@if [ -f $(SRC_TP2)/text_generation.py ]; then $(PYTHON) $(SRC_TP2)/text_generation.py; else echo "⚠ text_generation.py manquant (sauté)"; fi
 	@echo ""
 	@echo "▸ Partie 7: Génération de texte (Step 2)"
 	@echo "────────────────────────────────────────────────────────────────"
-	@$(PYTHON) $(SRC_TP2)/text_generation_v2.py
+	@# Note: Si le fichier n'existe pas, commentez la ligne ci-dessous
+	@if [ -f $(SRC_TP2)/text_generation_v2.py ]; then $(PYTHON) $(SRC_TP2)/text_generation_v2.py; else echo "⚠ text_generation_v2.py manquant (sauté)"; fi
 	@echo ""
 	@echo "▸ Partie 8: Loss et Perplexity"
 	@echo "────────────────────────────────────────────────────────────────"
@@ -164,10 +167,6 @@ tp2-train:
 	@echo "────────────────────────────────────────────────────────────────"
 	@$(PYTHON) $(SRC_TP2)/sampling.py
 	@echo ""
-	@echo "▸ Partie 12: Génération avancée"
-	@echo "────────────────────────────────────────────────────────────────"
-	@$(PYTHON) $(SRC_TP2)/generate_advanced.py
-	@echo ""
 	@echo "▸ Partie 13: Sauvegarder/Charger"
 	@echo "────────────────────────────────────────────────────────────────"
 	@$(PYTHON) $(SRC_TP2)/save_load.py
@@ -177,12 +176,21 @@ tp2-train:
 	@echo "════════════════════════════════════════════════════════════════"
 	@echo ""
 	@echo "Fichiers générés:"
-	@echo "  - outputs/tp2_training.png"
-	@echo "  - outputs/tp2_temperature.png"
-	@echo "  - outputs/tp2_topk.png"
 	@echo "  - models/gpt2_trained.pth"
 	@echo "  - models/gpt2_model_only.pth"
 	@echo "  - models/gpt2_checkpoint.pth"
+	@echo ""
+	@echo "👉 Pour tester le modèle manuellement: make tp2-test"
+	@echo ""
+
+tp2-test:
+	@echo ""
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo "  TP2 - TEST MANUEL (INTERACTIF)"
+	@echo "════════════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "Lancement du script de test manuel..."
+	@$(PYTHON) $(SRC_TP2)/manual_test.py
 	@echo ""
 
 tp2-openai:
@@ -226,9 +234,10 @@ interactive:
 	@echo "  [2] TP1 - Tokenizers & Attention"
 	@echo "  [3] TP2 - GPT-2 Implementation (parties 1-8)"
 	@echo "  [4] TP2 - Entraînement (parties 9-13)"
-	@echo "  [5] TP2 - Charger poids OpenAI (partie 14)"
-	@echo "  [6] Tous les TPs"
-	@echo "  [7] Nettoyer outputs"
+	@echo "  [5] TP2 - TEST MANUEL (Chatbot)"
+	@echo "  [6] TP2 - Charger poids OpenAI (partie 14)"
+	@echo "  [7] Tous les TPs"
+	@echo "  [8] Nettoyer outputs"
 	@echo "  [q] Quitter"
 	@echo ""
 	@read -p "Votre choix: " choice; \
@@ -237,9 +246,10 @@ interactive:
 		2) $(MAKE) tp1 ;; \
 		3) $(MAKE) tp2 ;; \
 		4) $(MAKE) tp2-train ;; \
-		5) $(MAKE) tp2-openai ;; \
-		6) $(MAKE) all ;; \
-		7) $(MAKE) clean ;; \
+		5) $(MAKE) tp2-test ;; \
+		6) $(MAKE) tp2-openai ;; \
+		7) $(MAKE) all ;; \
+		8) $(MAKE) clean ;; \
 		q|Q) echo ""; echo "Au revoir!"; echo ""; exit 0 ;; \
 		*) echo ""; echo "Option invalide"; echo ""; $(MAKE) interactive ;; \
 	esac; \

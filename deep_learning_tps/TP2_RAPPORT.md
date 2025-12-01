@@ -15,7 +15,7 @@ Implémentation complète d'un modèle GPT-2 (124M paramètres) from scratch et 
 ![LayerNorm](outputs/tp2_layernorm.png)
 
 **Résultat :**
-- Avant : valeurs dispersées (0 à 0.5)
+- Avant : valeurs dispersées
 - Après : valeurs centrées autour de 0
 - Mean ≈ 0, Variance ≈ 1
 
@@ -48,16 +48,20 @@ Implémentation complète d'un modèle GPT-2 (124M paramètres) from scratch et 
 
 **Sans residual :**
 ```
-Layer 1: 0.00020  ← Très faible
+
+Layer 1: 0.00020  ← Très faible (Vanishing Gradient)
 Layer 2: 0.00012
 Layer 5: 0.00505
+
 ```
 
 **Avec residual :**
 ```
-Layer 1: 0.222    ← Beaucoup plus fort !
+
+Layer 1: 0.222    ← Gradient préservé \!
 Layer 2: 0.207
 Layer 5: 1.326
+
 ```
 
 **Pourquoi ?** Résout le vanishing gradient, permet réseaux profonds (12+ couches).
@@ -68,14 +72,16 @@ Layer 5: 1.326
 
 **Architecture :**
 ```
+
 Input → LayerNorm → Attention → Dropout → +Residual
-      → LayerNorm → FeedForward → Dropout → +Residual → Output
+→ LayerNorm → FeedForward → Dropout → +Residual → Output
+
 ```
 
-**Paramètres par bloc :** 7,085,568
-- Attention : 2,360,064
-- FeedForward : 4,722,432
-- LayerNorms : 3,072
+**Paramètres par bloc :** ~7M
+- Attention : 2.3M
+- FeedForward : 4.7M
+- LayerNorms : 3K
 
 ---
 
@@ -83,57 +89,40 @@ Input → LayerNorm → Attention → Dropout → +Residual
 
 **Pipeline :**
 ```
+
 Token IDs [batch, seq]
-    ↓
+↓
 Token + Position Embeddings
-    ↓
+↓
 12× Transformer Blocks
-    ↓
+↓
 LayerNorm final
-    ↓
+↓
 Linear (768 → 50257)
-    ↓
-Logits [batch, seq, vocab_size]
+↓
+Logits [batch, seq, vocab\_size]
+
 ```
 
-**Paramètres totaux :** 163,009,536
-- Uniques : 124,412,160 (~124M)
-- Taille : 621 MB (float32)
-
----
-
-## 6-7. Génération de texte
-
-**Méthode greedy :**
-1. Calculer logits
-2. Softmax → probabilités
-3. Argmax → token le plus probable
-4. Ajouter au contexte
-5. Répéter
-
-**Avant entraînement :**
-```
-Input:  "Hello, I am"
-Output: "Hello, I am Featureiman Byeswickattribute argue"
-```
-→ Incohérent (poids aléatoires)
+**Paramètres totaux :** 163,009,536 (approx 124M uniques + embeddings partagés)
+- Taille : ~621 MB (float32)
 
 ---
 
 ## 8. Loss & Perplexity
 
 **Test sur modèle non-entraîné :**
-- Prédictions : "Armed he Netflix" vs "effort moves you"
+- Prédictions : Aléatoires
 - Cross Entropy : 10.794
-- **Perplexity : 48,726** (très élevée = très confus)
+- **Perplexity : 48,726** (très élevée = modèle confus)
 
 ---
 
 ## 9. Entraînement
 
 **Données :**
-- Corpus : the-verdict.txt (20K caractères)
-- Train : 18K (90%) / Val : 2K (10%)
+- Corpus : *The Verdict* (Edith Wharton)
+- Train : 90% / Val : 10%
 - 10 epochs, AdamW optimizer
 
 **Évolution :**
@@ -142,147 +131,76 @@ Output: "Hello, I am Featureiman Byeswickattribute argue"
 |-------|-----------|----------|-------------------|
 | 1 | 9.83 | 9.98 | "Every effort moves you,,,,,,,,,,,," |
 | 2 | 6.81 | 7.06 | "Every effort moves you, and, and, and..." |
-| 5 | 4.59 | 6.25 | "Every effort moves you, and, and he was..." |
-| 10 | 1.12 | 6.28 | **"Yes--quite insensible to the irony. She wanted him vindicated--and by me!"** |
+| 5 | 3.73 | 6.16 | "Every effort moves you know it was not that..." |
+| 10 | **0.39** | 6.45 | **"Every effort moves you know," was one of the axioms..."** |
 
 ![Training](outputs/tp2_training.png)
 
 **Résultat :**
-- ✅ Train loss : 10.98 → 1.12 (-90%)
-- ✅ Génération cohérente et réaliste
-- ⚠️ Val loss stagne à 6.28 (overfitting léger)
+- ✅ Train loss : 10.98 → 0.39 (Forte convergence)
+- ✅ Génération cohérente (mimétisme de style)
+- ⚠️ Val loss stagne/remonte (Overfitting dû à la petite taille du dataset)
 
 ---
 
 ## 10-11. Temperature & Top-K Sampling
 
-**Temperature :** Contrôle la diversité
+**Temperature :** Contrôle la "confiance" du modèle
 
 ![Temperature](outputs/tp2_temperature.png)
 
-- **Temp 0.1** : Très conservatif (toujours même mot)
-- **Temp 1.0** : Normal
-- **Temp 5.0** : Très créatif (mais peut perdre cohérence)
+- **Temp 0.1** : Très conservatif, répétitif
+- **Temp 1.0** : Équilibré
+- **Temp 2.0+** : Créatif mais incohérent
 
-**Top-K :** Garde seulement les k meilleurs tokens
+**Top-K :** Filtre les queues de distribution
 
 ![Top-K](outputs/tp2_topk.png)
 
-- Sans top-k : Tous les tokens possibles
-- Avec top-k=3 : Seulement "forward", "toward", "closer"
-
-**Formule :** `logits / temperature` puis softmax + sampling
+- Garde seulement les K tokens les plus probables
+- Évite les hallucinations graves ou les mots absurdes
 
 ---
 
-## 12. Génération avancée
+## 12. Génération avancée & Test Manuel
 
-**Nouvelle fonction :**
-```python
-def generate(model, idx, max_new_tokens, temperature=1.0, top_k=25):
-    # Temperature scaling + top-k filtering
-    # Multinomial sampling au lieu d'argmax
-```
+**Test interactif ("The Verdict" edition) :**
+Le modèle entraîné sur le livre *The Verdict* imite le style du 19ème siècle mais manque de connaissances générales.
 
-**Résultat :**
-- Non-déterministe (2 générations différentes)
-- Plus de diversité
-- Contrôle créativité vs cohérence
+**Exemple 1 (Prompt connu) :**
+> **Prompt:** "Mrs. Gisburn said"
+> **Output:** "...to go a brush." Suddenly he wouldn irony. Rickham--I didn't--it was!
 
-**Exemples (temp=1.4, top-k=25) :**
-```
-Output 1: "Every effort moves you?"
-          "Yes--quite insensible to the irony..."
+→ Le modèle reconnaît les personnages (Gisburn, Rickham) et imite la ponctuation complexe de l'auteure (tirets).
 
-Output 2: "Every effort moves you?"
-          "Yes--quite insensible to the portrait..."
-```
+**Exemple 2 (Prompt piège) :**
+> **Prompt:** "The internet is"
+> **Output:** "...frequently. It was just a little: 'strong he was--as such--had not: him..."
+
+→ Le modèle ne connaît pas "internet", il hallucine et revient à son vocabulaire connu (ponctuation, style littéraire) pour compenser.
 
 ---
 
-## 13. Sauvegarde/Chargement
+## 14. Chargement Poids OpenAI (Transfer Learning)
 
-**Fichiers créés :**
+**Concept :** Remplacer les poids entraînés sur un seul livre par les poids officiels de GPT-2 (entraînés sur le Web).
 
-1. **gpt2_trained.pth** (620 MB)
-   - State dict du modèle entraîné
+**Résultats :**
+> **Prompt:** "The future of Artificial Intelligence is"
+> **Output (OpenAI weights):** "...in its infancy, but the question becomes whether it can get there, without becoming a threat to humanity."
 
-2. **gpt2_checkpoint.pth** (1.86 GB)
-   - Modèle + optimizer + métadonnées
-   - Permet de reprendre l'entraînement
-
-**Chargement :**
-```python
-model.load_state_dict(torch.load('model.pth'), strict=False)
-```
-→ `strict=False` pour ignorer les buffers (mask)
+✅ **Preuve de validation :**
+L'architecture codée from scratch (`GPTModel`) est **parfaitement compatible** avec les tenseurs officiels. Cela valide mathématiquement toute l'implémentation (Attention, Norms, FeedForward).
 
 ---
 
-## Résultats finaux
+## Conclusion Finale
 
-### ✅ Accomplissements
+**Accomplissements :**
+1. **Architecture :** GPT-2 (124M) codé entièrement à la main en PyTorch.
+2. **Entraînement :** Modèle fonctionnel capable d'apprendre un style littéraire spécifique.
+3. **Inférence :** Pipeline de génération complet avec sampling (Temp, Top-K).
+4. **Validation :** Succès du chargement des poids officiels OpenAI, prouvant la justesse du code.
 
-1. **Implémenté GPT-2 from scratch** (124M paramètres)
-2. **Entraîné le modèle** (loss 10.98 → 1.12)
-3. **Génération cohérente** après 10 epochs
-4. **Sampling avancé** (temperature + top-k)
-5. **Sauvegarde/chargement** fonctionnel
-
-### 📊 Métriques finales
-
-- Train loss : **1.116**
-- Val loss : **6.281**
-- Perplexity val : **~535** (vs 48,726 au départ)
-- Taille modèle : **621 MB**
-
-### 🎯 Exemple de génération (epoch 10)
-
-**Prompt :** "Every effort moves you"
-
-**Output :**
-```
-"Every effort moves you?"
-
-"Yes--quite insensible to the irony. She wanted him 
-vindicated--and by me!"
-
-"Oh, and back his head to look up at the sketch of 
-the donkey."
-```
-
-→ **Dialogue réaliste avec structure narrative cohérente !**
-
----
-
-## Visualisations
-
-Toutes les visualisations sont dans `/outputs/` :
-- `tp2_layernorm.png` - Normalisation des activations
-- `tp2_gelu.png` - Comparaison activations
-- `tp2_residual.png` - Impact des skip connections
-- `tp2_training.png` - Évolution des losses
-- `tp2_temperature.png` - Impact de la température
-- `tp2_topk.png` - Filtrage top-k
-
----
-
-## Concepts clés maîtrisés
-
-✅ **LayerNorm** - Stabilisation de l'entraînement  
-✅ **GELU** - Activation moderne pour transformers  
-✅ **Residual connections** - Réseaux profonds  
-✅ **Transformer blocks** - Architecture modulaire  
-✅ **Pre-training** - Entraînement de LLM  
-✅ **Sampling** - Génération contrôlée  
-✅ **Model persistence** - Sauvegarde/chargement  
-
----
-
-## Conclusion
-
-**Mission accomplie !** 🎉
-
-Tu as construit et entraîné un vrai modèle GPT-2 from scratch. Le modèle génère du texte cohérent après seulement 10 epochs sur un petit corpus. 
-
-**Tu comprends maintenant comment ChatGPT fonctionne à l'intérieur.**
+**Bilan :**
+Ce TP a permis de démystifier le fonctionnement interne des LLMs modernes : de la multiplication matricielle de l'attention jusqu'au chargement de poids pré-entraînés massifs.
